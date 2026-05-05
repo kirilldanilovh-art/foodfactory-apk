@@ -7,13 +7,19 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Build custom Docker image
-      run: docker build -t my-buildozer .
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+
+    - name: Install buildozer
+      run: |
+        pip install buildozer cython
 
     - name: Create buildozer.spec
       run: |
@@ -35,13 +41,19 @@ jobs:
         echo 'log_level = 2' >> buildozer.spec
         echo 'warn_on_root = 0' >> buildozer.spec
 
+    - name: Accept Android SDK licenses
+      run: |
+        mkdir -p ~/.android
+        echo "### User Licenses ###" > ~/.android/licenses/android-sdk-license
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" >> ~/.android/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.android/licenses/android-sdk-license
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> ~/.android/licenses/android-sdk-license
+        echo "### User Licenses ###" > ~/.android/licenses/android-sdk-preview-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" >> ~/.android/licenses/android-sdk-preview-license
+
     - name: Build APK
       run: |
-        docker run --rm \
-          -v $(pwd):/app \
-          -w /app \
-          my-buildozer \
-          bash -c "buildozer android debug"
+        yes | buildozer android debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
