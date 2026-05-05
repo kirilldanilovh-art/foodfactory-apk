@@ -23,34 +23,43 @@ jobs:
 
     - name: Create buildozer.spec
       run: |
-        echo '[app]' > buildozer.spec
-        echo 'title = Food Factory' >> buildozer.spec
-        echo 'package.name = foodfactory' >> buildozer.spec
-        echo 'package.domain = org.example' >> buildozer.spec
-        echo 'source.dir = .' >> buildozer.spec
-        echo 'source.include_exts = py,png,jpg,kv,atlas' >> buildozer.spec
-        echo 'version = 1.0.0' >> buildozer.spec
-        echo 'requirements = python3,kivy==2.1.0,requests' >> buildozer.spec
-        echo 'orientation = portrait' >> buildozer.spec
-        echo 'fullscreen = 0' >> buildozer.spec
-        echo 'android.permissions = INTERNET' >> buildozer.spec
-        echo 'android.api = 30' >> buildozer.spec
-        echo 'android.minapi = 21' >> buildozer.spec
-        echo 'android.ndk = 25b' >> buildozer.spec
-        echo 'android.archs = arm64-v8a' >> buildozer.spec
-        echo 'log_level = 2' >> buildozer.spec
-        echo 'warn_on_root = 0' >> buildozer.spec
+        cat > buildozer.spec << 'EOF'
+[app]
+title = Food Factory
+package.name = foodfactory
+package.domain = org.example
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas
+version = 1.0.0
+requirements = python3,kivy==2.1.0,requests
+orientation = portrait
+fullscreen = 0
+android.permissions = INTERNET
+android.api = 30
+android.minapi = 21
+android.ndk = 25b
+android.sdk = 30
+android.archs = arm64-v8a
+android.accept_sdk_license = True
+log_level = 2
+warn_on_root = 0
 
-    - name: Accept Android SDK licenses
-      run: |
-        mkdir -p ~/.android/licenses
-        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > ~/.android/licenses/android-sdk-license
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.android/licenses/android-sdk-license
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> ~/.android/licenses/android-sdk-license
+# Оптимизации для GitHub Actions
+android.gradle_dependencies = ''
+android.add_src = 
+android.add_assets = 
+android.add_java = 
+android.add_uses_permissions = 
+android.add_uses_implied_permissions = 
+EOF
 
     - name: Build APK
       run: |
-        yes | buildozer android debug
+        # Устанавливаем переменные окружения
+        export PATH=$PATH:~/.local/bin
+        export USE_SDK_WRAPPER=1
+        # Собираем с флагом принудительного принятия
+        yes | buildozer -v android debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
