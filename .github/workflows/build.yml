@@ -1,4 +1,4 @@
-name: Build APK with Docker
+name: Build APK
 
 on:
   push:
@@ -7,10 +7,19 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+
+    - name: Install buildozer
+      run: |
+        pip install buildozer cython
 
     - name: Create buildozer.spec
       run: |
@@ -42,15 +51,9 @@ log_level = 2
 warn_on_root = 0
 EOF
 
-    - name: Build APK with Docker
+    - name: Build APK (no prompts)
       run: |
-        docker run --rm \
-          -v $(pwd):/app \
-          -w /app \
-          -e ANDROID_API=30 \
-          -e ANDROID_MINAPI=21 \
-          kivy/buildozer:latest \
-          bash -c "yes | buildozer android debug"
+        yes | buildozer android debug 2>&1
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
