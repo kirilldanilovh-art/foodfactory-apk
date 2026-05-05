@@ -15,7 +15,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+        sudo apt install -y git zip unzip openjdk-11-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
 
     - name: Install buildozer
       run: |
@@ -35,31 +35,24 @@ requirements = python3,kivy==2.1.0,requests
 orientation = portrait
 fullscreen = 0
 android.permissions = INTERNET
-android.api = 30
+android.api = 29
 android.minapi = 21
-android.ndk = 25b
-android.sdk = 30
-android.archs = arm64-v8a
-android.accept_sdk_license = True
+android.ndk = 23c
+android.sdk = 29
+android.archs = arm64-v8a, armeabi-v7a
 log_level = 2
 warn_on_root = 0
-
-# Оптимизации для GitHub Actions
-android.gradle_dependencies = ''
-android.add_src = 
-android.add_assets = 
-android.add_java = 
-android.add_uses_permissions = 
-android.add_uses_implied_permissions = 
 EOF
+
+    - name: Accept licenses
+      run: |
+        mkdir -p ~/.android/licenses
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > ~/.android/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.android/licenses/android-sdk-license
 
     - name: Build APK
       run: |
-        # Устанавливаем переменные окружения
-        export PATH=$PATH:~/.local/bin
-        export USE_SDK_WRAPPER=1
-        # Собираем с флагом принудительного принятия
-        yes | buildozer -v android debug
+        yes | buildozer android debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
