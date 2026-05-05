@@ -1,4 +1,4 @@
-name: Build APK with Docker (fixed)
+name: Build APK with Custom Docker
 
 on:
   push:
@@ -34,14 +34,13 @@ log_level = 2
 warn_on_root = 0
 EOF
 
-    - name: Build APK with Docker (bypass root check)
+    - name: Build APK with Docker (expect solution)
       run: |
         docker run --rm \
           -v $(pwd):/app \
           -w /app \
-          -e BUILDOZER_IGNORE_ROOT=1 \
           kivy/buildozer:latest \
-          bash -c "buildozer init && sed -i 's/check_root/pass # check_root/' /home/user/.venv/lib/python3.12/site-packages/buildozer/__init__.py && buildozer android debug"
+          bash -c "expect -c 'spawn buildozer android debug; expect \"Are you sure*\" {send \"y\r\"; expect \"*$\"}; interact'"
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
