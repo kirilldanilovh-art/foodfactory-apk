@@ -1,0 +1,537 @@
+import requests
+from kivy.app import App
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
+from kivy.uix.spinner import Spinner
+from kivy.uix.popup import Popup
+from kivy.clock import Clock
+from kivy.core.window import Window
+from kivy.graphics import Color, RoundedRectangle
+from kivy.metrics import dp
+import threading
+import time
+import uuid
+from datetime import datetime
+
+Window.size = (360, 640)
+Window.clearcolor = (0.94, 0.95, 0.97, 1)
+
+API_URL = "http://94.141.162.50:8000"
+
+PRODUCTS = ['Котлеты', 'Нагетсы', 'Сосиски', 'Бургерные котлеты', 'Пельмени']
+COMPLAINTS = ['Качество продукции', 'Вес/объём', 'Упаковка', 'Срок годности', 'Другое']
+PRIORITIES = [("low", "Низкий"), ("medium", "Средний"), ("high", "Высокий"), ("critical", "Критический")]
+
+
+class RoundedButton(Button):
+    def __init__(self, bg_color=(0.06, 0.16, 0.23, 1), **kwargs):
+        super().__init__(**kwargs)
+        self.background_color = (0, 0, 0, 0)
+        self.background_normal = ''
+        self.bg_color = bg_color
+        self.size_hint = (None, None)
+        self.width = dp(300)
+        self.height = dp(50)
+        self.bind(pos=self.update_canvas, size=self.update_canvas)
+
+    def update_canvas(self, *args):
+        self.canvas.before.clear()
+        with self.canvas.before:
+            Color(*self.bg_color)
+            RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(12)])
+
+
+class Header(BoxLayout):
+    def __init__(self, bg_color=(0.06, 0.16, 0.23, 1), **kwargs):
+        super().__init__(**kwargs)
+        self.bg_color = bg_color
+        self.size_hint_y = None
+        self.height = dp(60)
+        self.padding = [dp(15), dp(10)]
+        self.bind(pos=self.update_canvas, size=self.update_canvas)
+
+    def update_canvas(self, *args):
+        self.canvas.before.clear()
+        with self.canvas.before:
+            Color(*self.bg_color)
+            RoundedRectangle(pos=self.pos, size=self.size, radius=[0])
+
+
+class DelayedTaskManager:
+    _instance = None
+    _tasks = []
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._start_worker()
+        return cls._instance
+
+    def _start_worker(self):
+        self._running = True
+        self._thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self._thread.start()
+
+    def add_task(self, name, delay_seconds):
+        task_id = str(uuid.uuid4())[:8]
+        task = {
+            'id': task_id,
+            'name': name,
+            'status': 'pending',
+            'created_at': time.time(),
+            'execute_at': time.time() + delay_seconds
+        }
+        self._tasks.append(task)
+        return task_id
+
+    def get_pending_count(self):
+        now = time.time()
+        return len([t for t in self._tasks if t['status'] == 'pending' and t['execute_at'] > now])
+
+    def _worker_loop(self):
+        while self._running:
+            now = time.time()
+            for t in self._tasks[:]:
+                if t['status'] == 'pending' and t['execute_at'] <= now:
+                    t['status'] = 'completed'
+                    print(f"✅ Задача выполнена: {t['name']}")
+            time.sleep(1)
+
+
+delayed_manager = DelayedTaskManager()
+
+
+class APIClient:
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.token = None
+            cls._instance.current_user = None
+            cls._instance.user_full_name = None
+        return cls._instance
+
+    def get_headers(self):
+        return {'Authorization': f'Bearer {self.token}'} if self.token else {}
+
+    def register(self, full_name, username, password):
+        try:
+            r = requests.post(f"{API_URL}/users/", 
+                            json={'full_name': full_name, 'login': username, 'password': password}, timeout=5)
+            return r.status_code == 201
+        except:
+            return False
+
+    def login(self, username, password):
+        try:
+            r = requests.post(f"{API_URL}/auth/login", 
+                            json={'login': username, 'password': password}, timeout=5)
+            if r.status_code == 200:
+                self.token = r.json().get('access_token')
+                self.current_user = username
+                self.get_user_info()
+                return True
+        except:
+            pass
+        return False
+
+    def get_user_info(self):
+        try:
+            r = requests.get(f"{API_URL}/claims/user/info", headers=self.get_headers(), timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                self.user_full_name = data.get('full_name', self.current_user)
+                return data
+        except:
+            pass
+        return None
+
+    def get_my_claims(self):
+        try:
+            r = requests.get(f"{API_URL}/claims/", headers=self.get_headers(), timeout=5)
+            return r.json() if r.status_code == 200 else []
+        except:
+            return []
+
+    def get_claim_by_id(self, claim_id):
+        try:
+            r = requests.get(f"{API_URL}/claims/{claim_id}", headers=self.get_headers(), timeout=5)
+            return r.json() if r.status_code == 200 else None
+        except:
+            return None
+
+    def create_claim(self, client, product, complaint, desc, batch, priority):
+        try:
+            r = requests.post(f"{API_URL}/claims/", json={
+                'client': client, 'product': product, 'complaint_type': complaint,
+                'description': desc, 'batch': batch, 'priority': priority
+            }, headers=self.get_headers(), timeout=10)
+            if r.status_code == 201:
+                return True, r.json()
+            return False, None
+        except:
+            return False, None
+
+    def generate_report(self, batch):
+        try:
+            r = requests.get(f"{API_URL}/claims/generate-report/{batch}", 
+                           headers=self.get_headers(), timeout=10)
+            return (True, r.json()) if r.status_code == 200 else (False, None)
+        except:
+            return False, None
+
+    def get_reports_list(self):
+        try:
+            r = requests.get(f"{API_URL}/claims/reports/list", headers=self.get_headers(), timeout=5)
+            return r.json().get('reports', []) if r.status_code == 200 else []
+        except:
+            return []
+
+    def download_report(self, filename):
+        try:
+            r = requests.get(f"{API_URL}/claims/reports/download/{filename}", 
+                           headers=self.get_headers(), timeout=10)
+            return r.json() if r.status_code == 200 else None
+        except:
+            return None
+
+
+api = APIClient()
+
+
+def show_message(title, text, is_error=False):
+    color = (0.86, 0.20, 0.27, 1) if is_error else (0.16, 0.65, 0.27, 1)
+    popup = Popup(title=title, 
+                  content=Label(text=text, color=color),
+                  size_hint=(0.85, 0.3))
+    popup.open()
+    Clock.schedule_once(lambda dt: popup.dismiss(), 2)
+
+
+class LoginScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build_ui()
+
+    def build_ui(self):
+        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
+        
+        layout.add_widget(Label(text='FOOD FACTORY', font_size=dp(28), bold=True, color=(0.06, 0.16, 0.23, 1), size_hint_y=0.15))
+        
+        self.username = TextInput(hint_text='Логин', multiline=False, size_hint_y=None, height=dp(45))
+        self.password = TextInput(hint_text='Пароль', password=True, multiline=False, size_hint_y=None, height=dp(45))
+        
+        layout.add_widget(self.username)
+        layout.add_widget(self.password)
+        
+        self.login_btn = RoundedButton(bg_color=(0.16, 0.65, 0.27, 1), text='ВОЙТИ', color=(1,1,1,1), font_size=dp(16), bold=True)
+        self.login_btn.bind(on_press=self.do_login)
+        layout.add_widget(self.login_btn)
+        
+        self.error = Label(text='', color=(0.86, 0.20, 0.27, 1), size_hint_y=None, height=dp(25))
+        layout.add_widget(self.error)
+        
+        reg_btn = Button(text='Создать аккаунт', size_hint_y=None, height=dp(40),
+                         background_color=(0,0,0,0), color=(0.09, 0.55, 0.72, 1), font_size=dp(12))
+        reg_btn.bind(on_press=lambda x: setattr(self.manager, 'current', 'register'))
+        layout.add_widget(reg_btn)
+        
+        self.add_widget(layout)
+
+    def do_login(self, inst):
+        if api.login(self.username.text.strip(), self.password.text.strip()):
+            self.manager.current = 'main'
+        else:
+            self.error.text = 'Неверный логин или пароль!'
+
+
+class RegisterScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build_ui()
+
+    def build_ui(self):
+        layout = BoxLayout(orientation='vertical', padding=dp(15))
+
+        header = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        back_btn = Button(text='Назад', size_hint_x=None, width=dp(60),
+                          background_color=(0,0,0,0), color=(0.06, 0.16, 0.23, 1), font_size=dp(14))
+        back_btn.bind(on_press=lambda x: setattr(self.manager, 'current', 'login'))
+        header.add_widget(back_btn)
+        header.add_widget(Label(text='Регистрация', font_size=dp(18), bold=True, color=(0.06, 0.16, 0.23, 1)))
+        layout.add_widget(header)
+
+        scroll = ScrollView()
+        content = GridLayout(cols=1, padding=dp(15), spacing=dp(12), size_hint_y=None)
+        content.bind(minimum_height=content.setter('height'))
+
+        self.full_name = TextInput(hint_text='Ваше имя', multiline=False, size_hint_y=None, height=dp(45))
+        self.username = TextInput(hint_text='Логин', multiline=False, size_hint_y=None, height=dp(45))
+        self.password = TextInput(hint_text='Пароль', password=True, multiline=False, size_hint_y=None, height=dp(45))
+        self.confirm = TextInput(hint_text='Подтвердите пароль', password=True, multiline=False, size_hint_y=None, height=dp(45))
+
+        content.add_widget(self.full_name)
+        content.add_widget(self.username)
+        content.add_widget(self.password)
+        content.add_widget(self.confirm)
+
+        reg_btn = RoundedButton(bg_color=(0.16, 0.65, 0.27, 1), text='ЗАРЕГИСТРИРОВАТЬСЯ', color=(1,1,1,1))
+        reg_btn.bind(on_press=self.do_register)
+        content.add_widget(reg_btn)
+
+        scroll.add_widget(content)
+        layout.add_widget(scroll)
+        self.add_widget(layout)
+
+    def do_register(self, inst):
+        name = self.full_name.text.strip()
+        un = self.username.text.strip()
+        pw = self.password.text.strip()
+        cf = self.confirm.text.strip()
+
+        if not name or not un or not pw:
+            show_message('Ошибка', 'Заполните все поля!', True)
+            return
+        if pw != cf:
+            show_message('Ошибка', 'Пароли не совпадают!', True)
+            return
+        if api.register(name, un, pw):
+            show_message('Успех', 'Регистрация успешна!')
+            Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'login'), 1.5)
+        else:
+            show_message('Ошибка', 'Ошибка регистрации!', True)
+
+
+class MainScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build_ui()
+
+    def build_ui(self):
+        layout = BoxLayout(orientation='vertical')
+
+        header = Header(bg_color=(0.06, 0.16, 0.23, 1))
+        header.add_widget(Label(text='FOOD FACTORY', color=(0.96, 0.72, 0.24, 1), bold=True, font_size=18))
+        logout = Button(text='Выход', size_hint_x=None, width=dp(60), background_color=(0.86, 0.20, 0.27, 1), color=(1,1,1,1), font_size=dp(12))
+        logout.bind(on_press=self.logout)
+        header.add_widget(logout)
+        layout.add_widget(header)
+
+        content = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(15))
+        
+        display_name = api.user_full_name if api.user_full_name else api.current_user
+        if display_name is None:
+            display_name = 'Пользователь'
+        self.user_label = Label(text=f'Добро пожаловать, {display_name}!', size_hint_y=None, height=dp(30), font_size=dp(15), color=(0.06, 0.16, 0.23, 1))
+        content.add_widget(self.user_label)
+        
+        self.tasks_label = Label(text='📋 Нет отложенных задач', size_hint_y=None, height=dp(25), font_size=dp(13), color=(0.09, 0.55, 0.72, 1))
+        content.add_widget(self.tasks_label)
+        
+        self.stats_label = Label(text='📊 Всего заявок: 0', size_hint_y=None, height=dp(25), font_size=dp(13), color=(0.42, 0.46, 0.51, 1))
+        content.add_widget(self.stats_label)
+        
+        btn_create = RoundedButton(bg_color=(0.16, 0.65, 0.27, 1), text='СОЗДАТЬ ЗАЯВКУ', color=(1,1,1,1))
+        btn_create.bind(on_press=lambda x: setattr(self.manager, 'current', 'new_claim'))
+        content.add_widget(btn_create)
+        
+        btn_claims = RoundedButton(bg_color=(0.09, 0.55, 0.72, 1), text='МОИ ЗАЯВКИ', color=(1,1,1,1))
+        btn_claims.bind(on_press=lambda x: setattr(self.manager, 'current', 'my_claims'))
+        content.add_widget(btn_claims)
+        
+        btn_reports = RoundedButton(bg_color=(0.96, 0.72, 0.24, 1), text='ОТЧЁТЫ', color=(1,1,1,1))
+        btn_reports.bind(on_press=lambda x: setattr(self.manager, 'current', 'reports'))
+        content.add_widget(btn_reports)
+        
+        layout.add_widget(content)
+        self.add_widget(layout)
+
+    def on_enter(self):
+        self.update_tasks()
+        self.update_stats()
+
+    def update_tasks(self):
+        count = delayed_manager.get_pending_count()
+        if count > 0:
+            self.tasks_label.text = f'⏰ Выполняется: {count} задач'
+        else:
+            self.tasks_label.text = '📋 Нет отложенных задач'
+
+    def update_stats(self):
+        claims = api.get_my_claims()
+        self.stats_label.text = f'📊 Всего заявок: {len(claims)}'
+
+    def logout(self, inst):
+        api.token = None
+        self.manager.current = 'login'
+
+
+class NewClaimScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build_ui()
+
+    def build_ui(self):
+        layout = BoxLayout(orientation='vertical')
+        
+        header = BoxLayout(size_hint_y=None, height=dp(50), padding=dp(10))
+        back = Button(text='←', size_hint_x=None, width=dp(50), background_color=(0.42, 0.46, 0.51, 1), color=(1,1,1,1), font_size=dp(18))
+        back.bind(on_press=lambda x: setattr(self.manager, 'current', 'main'))
+        header.add_widget(back)
+        header.add_widget(Label(text='Создание заявки', font_size=dp(18), bold=True, color=(0.06, 0.16, 0.23, 1)))
+        layout.add_widget(header)
+        
+        scroll = ScrollView()
+        content = GridLayout(cols=1, padding=dp(15), spacing=dp(12), size_hint_y=None)
+        content.bind(minimum_height=content.setter('height'))
+        
+        self.client = TextInput(hint_text='Ваше имя', multiline=False, size_hint_y=None, height=dp(45))
+        self.product = Spinner(text='Выберите продукт', values=PRODUCTS, size_hint_y=None, height=dp(45))
+        self.complaint = Spinner(text='Тип жалобы', values=COMPLAINTS, size_hint_y=None, height=dp(45))
+        self.description = TextInput(hint_text='Опишите проблему...', multiline=True, size_hint_y=None, height=dp(80))
+        self.batch = TextInput(hint_text='Номер партии', multiline=False, size_hint_y=None, height=dp(45))
+        
+        content.add_widget(self.client)
+        content.add_widget(self.product)
+        content.add_widget(self.complaint)
+        content.add_widget(self.description)
+        content.add_widget(self.batch)
+        
+        submit = RoundedButton(bg_color=(0.16, 0.65, 0.27, 1), text='ОТПРАВИТЬ', color=(1,1,1,1))
+        submit.bind(on_press=self.submit)
+        content.add_widget(submit)
+        
+        self.msg = Label(text='', size_hint_y=None, height=dp(25))
+        content.add_widget(self.msg)
+        
+        scroll.add_widget(content)
+        layout.add_widget(scroll)
+        self.add_widget(layout)
+
+    def submit(self, inst):
+        if not self.client.text.strip():
+            self.msg.text = 'Введите имя!'
+            return
+        priority_val = [k for k, v in PRIORITIES if v == self.priority_spinner.text][0] if hasattr(self, 'priority_spinner') else 'medium'
+        success, claim = api.create_claim(
+            self.client.text.strip(), self.product.text, self.complaint.text,
+            self.description.text.strip(), self.batch.text.strip() or 'не указан', priority_val
+        )
+        if success:
+            delayed_manager.add_task(f'Обработка заявки #{claim["id"]}', 10)
+            self.msg.text = f'✅ Заявка #{claim["id"]} создана!'
+            Clock.schedule_once(lambda dt: setattr(self.manager, 'current', 'main'), 1.5)
+        else:
+            self.msg.text = '❌ Ошибка!'
+
+
+class MyClaimsScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build_ui()
+
+    def build_ui(self):
+        layout = BoxLayout(orientation='vertical')
+        
+        header = BoxLayout(size_hint_y=None, height=dp(50), padding=dp(10))
+        back = Button(text='←', size_hint_x=None, width=dp(50), background_color=(0.42, 0.46, 0.51, 1), color=(1,1,1,1), font_size=dp(18))
+        back.bind(on_press=lambda x: setattr(self.manager, 'current', 'main'))
+        header.add_widget(back)
+        header.add_widget(Label(text='Мои заявки', font_size=dp(18), bold=True, color=(0.06, 0.16, 0.23, 1)))
+        layout.add_widget(header)
+        
+        scroll = ScrollView()
+        self.claims_list = GridLayout(cols=1, spacing=dp(10), padding=dp(12), size_hint_y=None)
+        self.claims_list.bind(minimum_height=self.claims_list.setter('height'))
+        scroll.add_widget(self.claims_list)
+        layout.add_widget(scroll)
+        self.add_widget(layout)
+
+    def on_enter(self):
+        self.load_claims()
+
+    def load_claims(self):
+        self.claims_list.clear_widgets()
+        claims = api.get_my_claims()
+        for c in claims:
+            card = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(100), padding=dp(10), spacing=dp(5))
+            with card.canvas.before:
+                Color(1, 1, 1, 1)
+                RoundedRectangle(pos=card.pos, size=card.size, radius=[dp(10)])
+            card.bind(pos=lambda i,p: setattr(card.canvas.before.children[-1], 'pos', p),
+                     size=lambda i,s: setattr(card.canvas.before.children[-1], 'size', s))
+            card.add_widget(Label(text=f"Заявка #{c['id']} | {c.get('status', 'CREATED')}", bold=True, color=(0.06, 0.16, 0.23, 1)))
+            card.add_widget(Label(text=f"Продукт: {c.get('product', '-')}", color=(0.42, 0.46, 0.51, 1)))
+            card.add_widget(Label(text=f"Партия: {c.get('batch', '-')}", color=(0.42, 0.46, 0.51, 1)))
+            self.claims_list.add_widget(card)
+
+
+class ReportsScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build_ui()
+
+    def build_ui(self):
+        layout = BoxLayout(orientation='vertical')
+        
+        header = BoxLayout(size_hint_y=None, height=dp(50), padding=dp(10))
+        back = Button(text='←', size_hint_x=None, width=dp(50), background_color=(0.42, 0.46, 0.51, 1), color=(1,1,1,1), font_size=dp(18))
+        back.bind(on_press=lambda x: setattr(self.manager, 'current', 'main'))
+        header.add_widget(back)
+        header.add_widget(Label(text='Отчёты', font_size=dp(18), bold=True, color=(0.06, 0.16, 0.23, 1)))
+        layout.add_widget(header)
+        
+        scroll = ScrollView()
+        content = GridLayout(cols=1, padding=dp(15), spacing=dp(12), size_hint_y=None)
+        content.bind(minimum_height=content.setter('height'))
+        
+        self.batch_input = TextInput(hint_text='Номер партии', multiline=False, size_hint_y=None, height=dp(45))
+        self.result_label = Label(text='', size_hint_y=None, height=dp(25))
+        
+        content.add_widget(Label(text='Создать отчёт по партии', bold=True, color=(0.06, 0.16, 0.23, 1)))
+        content.add_widget(self.batch_input)
+        content.add_widget(self.result_label)
+        
+        create_btn = RoundedButton(bg_color=(0.16, 0.65, 0.27, 1), text='СОЗДАТЬ ОТЧЁТ', color=(1,1,1,1))
+        create_btn.bind(on_press=self.create_report)
+        content.add_widget(create_btn)
+        
+        scroll.add_widget(content)
+        layout.add_widget(scroll)
+        self.add_widget(layout)
+
+    def create_report(self, inst):
+        batch = self.batch_input.text.strip()
+        if not batch:
+            show_message('Ошибка', 'Введите номер партии!', True)
+            return
+        success, result = api.generate_report(batch)
+        if success:
+            self.result_label.text = f'✅ Отчёт "{result["filename"]}" создан!'
+            self.batch_input.text = ''
+            Clock.schedule_once(lambda dt: setattr(self.result_label, 'text', ''), 3)
+        else:
+            self.result_label.text = '❌ Заявка не найдена!'
+            Clock.schedule_once(lambda dt: setattr(self.result_label, 'text', ''), 3)
+
+
+class FoodFactoryApp(App):
+    def build(self):
+        sm = ScreenManager()
+        sm.add_widget(LoginScreen(name='login'))
+        sm.add_widget(RegisterScreen(name='register'))
+        sm.add_widget(MainScreen(name='main'))
+        sm.add_widget(NewClaimScreen(name='new_claim'))
+        sm.add_widget(MyClaimsScreen(name='my_claims'))
+        sm.add_widget(ReportsScreen(name='reports'))
+        return sm
+
+
+if __name__ == '__main__':
+    FoodFactoryApp().run()
