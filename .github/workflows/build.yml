@@ -32,13 +32,13 @@ jobs:
         echo 'log_level = 2' >> buildozer.spec
         echo 'warn_on_root = 0' >> buildozer.spec
 
-    - name: Build APK with Docker (fixed root prompt)
+    - name: Build APK with Python patch
       run: |
         docker run --rm \
           -v $(pwd):/app \
           -w /app \
           kivy/buildozer:latest \
-          bash -c "touch buildozer.spec && echo 'y' | buildozer android debug"
+          bash -c "sed -i 's/input.*Are you sure.*/cont = \"y\"/' /home/user/.venv/lib/python3.12/site-packages/buildozer/__init__.py && yes | buildozer android debug"
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
