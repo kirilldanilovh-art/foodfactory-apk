@@ -18,7 +18,6 @@ jobs:
 
     - name: Set up dependencies
       run: |
-        # Обновление и установка необходимых инструментов
         sudo apt-get update
         sudo apt-get install -y \
           git \
@@ -36,16 +35,14 @@ jobs:
           libc6-dev-i386 \
           gcc-multilib \
           g++-multilib
-
-        # Установка buildozer
         pip3 install --upgrade pip
         pip3 install buildozer
+        pip3 install cython
 
     - name: Build APK
       env:
         ANDROIDSDK: ${{ secrets.ANDROIDSDK }}
         ANDROIDNDK: ${{ secrets.ANDROIDNDK }}
       run: |
-        # Пример сборки проекта с помощью buildozer
-        # Перед запуском убедитесь, что ваш buildozer.spec настроен правильно
+        # Запуск сборки проекта
         buildozer android debug deploy run
