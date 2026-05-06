@@ -1,48 +1,18 @@
-name: Build Android APK
-
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-
+name: Build APK
+on: push
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          git \
-          python3-pip \
-          openjdk-17-jdk \
-          unzip \
-          autoconf \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses5-dev \
-          libncursesw5-dev \
-          libssl-dev \
-          libc6-dev \
-          libc6-dev-i386 \
-          gcc-multilib \
-          g++-multilib
-        pip3 install --upgrade pip
-        pip3 install buildozer
-        pip3 install cython
-
-    - name: Build APK
-      env:
-        ANDROIDSDK: ${{ secrets.ANDROIDSDK }}
-        ANDROIDNDK: ${{ secrets.ANDROIDNDK }}
-      run: |
-        # Запуск сборки проекта
-        buildozer android debug deploy run
+      - uses: actions/checkout@v2
+      - name: Build APK
+        run: |
+          sudo apt update
+          sudo apt install -y git zip unzip openjdk-17-jdk
+          pip install buildozer cython
+          buildozer android debug
+      - name: Upload APK
+        uses: actions/upload-artifact@v2
+        with:
+          name: app
+          path: bin/*.apk
