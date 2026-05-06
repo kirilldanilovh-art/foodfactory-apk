@@ -1,4 +1,4 @@
-name: CI Build
+name: Build Android APK
 
 on:
   push:
@@ -13,14 +13,49 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install dependencies
+    - name: Set up dependencies
       run: |
-        timeout 30m bash -c '
-        for i in 1 2 3; do
-          echo "Attempt $i: installing dependencies..."
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends \
-            git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev && break || sleep 10
-        done'
+        # Установка необходимых зависимостей для сборки Android
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          python3-pip \
+          openjdk-17-jdk \
+          unzip \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libssl-dev \
+          libc6-dev \
+          libc6-dev-i386 \
+          gcc-multilib \
+          g++-multilib \
+          openjdk-17-jdk
+
+        # Установка Buildozer
+        pip3 install --upgrade pip
+        pip3 install buildozer
+
+        # Установка SDK и NDK для Android
+        # Buildozer скачает и установит автоматически при сборке
+
+    - name: Build APK
+      run: |
+        # Обновляем окружение
+        # Следующие строки позволяют избежать ошибок с Android SDK/NDK
+        package_name=foodfactory
+
+        # Запуск сборки
+        buildozer android debug deploy run
+      env:
+        # Можно выставить переменные окружения, если нужно
+        # Но в вашем случае buildozer использует параметры из buildozer.spec
+        # Переменные не обязательны, можно оставить пустыми
+        ANDROIDSDK = ${{ secrets.ANDROIDSDK }}
+        ANDROIDNDK = ${{ secrets.ANDROIDNDK }}
