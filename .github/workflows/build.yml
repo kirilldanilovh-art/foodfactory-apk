@@ -14,11 +14,14 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt update
-        sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+        sudo apt-get update
+        sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
+          zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
 
-    - name: Install buildozer
-      run: pip install buildozer cython
+    - name: Install Python requirements
+      run: |
+        python3 -m pip install --upgrade pip
+        pip install buildozer cython
 
     - name: Create buildozer.spec
       run: |
@@ -41,14 +44,18 @@ jobs:
         echo 'log_level = 2' >> buildozer.spec
         echo 'warn_on_root = 0' >> buildozer.spec
 
-    - name: Accept licenses
+    - name: Accept Android licenses
       run: |
         mkdir -p ~/.android/licenses
         echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > ~/.android/licenses/android-sdk-license
 
+    - name: Clean previous builds
+      run: |
+        buildozer android clean || true
+
     - name: Build APK
       run: |
-        buildozer android debug <<< "y"
+        yes | buildozer --verbose android debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
