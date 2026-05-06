@@ -15,7 +15,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+        sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev expect
 
     - name: Install buildozer
       run: |
@@ -49,9 +49,19 @@ jobs:
         echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.android/licenses/android-sdk-license
         echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> ~/.android/licenses/android-sdk-license
 
-    - name: Build APK
+    - name: Build APK with expect
       run: |
-        yes | buildozer android debug
+        expect -c '
+          set timeout 3600
+          spawn buildozer android debug
+          expect {
+            "Are you sure you want to continue" { send "y\r"; exp_continue }
+            "Accept?" { send "y\r"; exp_continue }
+            "y/N" { send "y\r"; exp_continue }
+            "\\[y/n\\]" { send "y\r"; exp_continue }
+            eof
+          }
+        '
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
