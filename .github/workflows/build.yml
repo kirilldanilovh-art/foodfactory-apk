@@ -18,7 +18,7 @@ jobs:
 
     - name: Set up dependencies
       run: |
-        # Установка необходимых зависимостей для сборки Android
+        # Обновление и установка необходимых инструментов
         sudo apt-get update
         sudo apt-get install -y \
           git \
@@ -35,27 +35,17 @@ jobs:
           libc6-dev \
           libc6-dev-i386 \
           gcc-multilib \
-          g++-multilib \
-          openjdk-17-jdk
+          g++-multilib
 
-        # Установка Buildozer
+        # Установка buildozer
         pip3 install --upgrade pip
         pip3 install buildozer
 
-        # Установка SDK и NDK для Android
-        # Buildozer скачает и установит автоматически при сборке
-
     - name: Build APK
-      run: |
-        # Обновляем окружение
-        # Следующие строки позволяют избежать ошибок с Android SDK/NDK
-        package_name=foodfactory
-
-        # Запуск сборки
-        buildozer android debug deploy run
       env:
-        # Можно выставить переменные окружения, если нужно
-        # Но в вашем случае buildozer использует параметры из buildozer.spec
-        # Переменные не обязательны, можно оставить пустыми
-        ANDROIDSDK = ${{ secrets.ANDROIDSDK }}
-        ANDROIDNDK = ${{ secrets.ANDROIDNDK }}
+        ANDROIDSDK: ${{ secrets.ANDROIDSDK }}
+        ANDROIDNDK: ${{ secrets.ANDROIDNDK }}
+      run: |
+        # Пример сборки проекта с помощью buildozer
+        # Перед запуском убедитесь, что ваш buildozer.spec настроен правильно
+        buildozer android debug deploy run
